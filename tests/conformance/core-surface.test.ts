@@ -34,6 +34,7 @@ const METHODS = [
   "changeQueuedMessage",
   "chatFileTarget",
   "compactThread",
+  "connectLocalServer",
   "connectionSnapshot",
   "createGame",
   "createGameThread",

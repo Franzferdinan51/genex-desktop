@@ -35,6 +35,7 @@ import { coverLookName, coverRecipeFromTool } from "../shared/cover-recipe.ts";
 import { CustomEvent, customEventData } from "../shared/custom-events.ts";
 import { MINUTE_MS, SECOND_MS } from "../shared/duration.ts";
 import { EngineStatusCode } from "../shared/engine-descriptor.ts";
+import { LocalServerKind } from "../shared/local-server.ts";
 import { errorMessage } from "../shared/errors.ts";
 import { EventKind, ThreadKind, SnapshotScope } from "../shared/event-log.ts";
 import { assetKind, isAudioFile, type AssetDeliveredPayload } from "../shared/game-assets.ts";
@@ -84,15 +85,10 @@ import { readEngineBinding } from "../substrate/game-engine-binding.ts";
 import { latestBuildPreview } from "../substrate/build-preview.ts";
 import { ContextPreferences } from "../substrate/context-settings.ts";
 import { BonsaiEngine } from "../substrate/engines/bonsai.ts";
-import { ClaudeCodeEngine } from "../substrate/engines/claude-code.ts";
-import { CodexEngine } from "../substrate/engines/codex.ts";
 import { OllamaEngine, OllamaSidecar } from "../substrate/engines/ollama.ts";
-import { OpenCodeEngine } from "../substrate/engines/opencode.ts";
-import { LOCK_RECOVERY_DIR } from "../substrate/engines/ownership-locks.ts";
-import { OpenRouterEngine } from "../substrate/engines/openrouter.ts";
 import { LocalServerEngine } from "../substrate/engines/local-server.ts";
 import { serverSettings } from "../substrate/local-server/settings.ts";
-import { LOCAL_SERVER_KEY_SECRET, OPENROUTER_KEY_SECRET, secretKeyStore } from "../substrate/provider-keys.ts";
+import { LOCAL_SERVER_KEY_SECRET, secretKeyStore } from "../substrate/provider-keys.ts";
 import { EngineRegistry } from "../substrate/engines/registry.ts";
 import type { Engine, LiveToolResult } from "../substrate/engines/types.ts";
 import { EventStore } from "../substrate/event-store.ts";
@@ -431,6 +427,23 @@ export interface StudioCoreOptions {
 }
 
 export type { CoreInternals };
+
+/**
+ * Which bundled plugin seeds start enabled. The Unreal, Unity, Godot and Roblox Studio plugins
+ * are off until the user turns them on: each needs its editor, and Roblox an account for people
+ * 18 and over. The Genex seed stays on: it carries the plugin-authoring guide and plugin_check,
+ * which are local; its hosted generators stay inert without a Genex account, which this fork
+ * never asks for, and each spend asks for consent first.
+ */
+function pluginSeedEnabled(settings: StudioSettings): Record<string, boolean> {
+  return {
+    blender: settings.blender,
+    unreal: false,
+    unity: false,
+    godot: false,
+    roblox: false,
+  };
+}
 
 export class StudioCore {
   readonly options: StudioCoreOptions;
@@ -1071,15 +1084,7 @@ export class StudioCore {
       const shape = await readProjectShape(binding.directory);
       return shape.build ? path.join(binding.directory, "public") : binding.directory;
     };
-    // The Unreal, Unity, Godot and Roblox Studio plugins are bundled and off until the user turns
-    // them on: each needs its editor, and Roblox an account for people 18 and over.
-    this.plugins.seedEnabled = {
-      blender: this.#settings.blender,
-      unreal: false,
-      unity: false,
-      godot: false,
-      roblox: false,
-    };
+    this.plugins.seedEnabled = pluginSeedEnabled(this.#settings);
     // The Genex account is the app's: Genex off takes the agent's tools, never the sign-in or Publish.
     this.plugins.appAccount = { id: GENEX_PLUGIN_ID, actions: GENEX_ACCOUNT_ACTIONS };
     this.plugins.onChange = (c) => {
@@ -1266,21 +1271,15 @@ export class StudioCore {
     });
   }
 
-  /** The engines the options name, or the app's own four. */
+  /** The engines the options name, or the app's own local three. */
   #registerEngines(): void {
     const engines = this.options.engines ?? this.#defaultEngines();
     for (const engine of engines) this.engines.register(engine);
-    // Local first: it is the one engine that cannot be rate limited, which is what makes it
-    // the fallback when a subscription throttles mid-run. The metered engines come last, and
-    // the registry never picks them on its own anyway (`isMetered`).
-    this.engines.setPreferredOrder([
-      EngineId.Bonsai,
-      EngineId.Ollama,
-      EngineId.LocalServer,
-      ...SUBSCRIPTION_ENGINES,
-      EngineId.OpenCode,
-      EngineId.OpenRouter,
-    ]);
+    // This fork runs entirely on the person's own hardware: the local server (their LM Studio,
+    // llama.cpp or TabbyAPI) is the engine of first resort, then the managed Bonsai runtime,
+    // then their Ollama. No subscription or metered engine is registered, so no run can leave
+    // the machine or spend anything.
+    this.engines.setPreferredOrder([EngineId.LocalServer, EngineId.Bonsai, EngineId.Ollama]);
   }
 
   #defaultEngines(): Engine[] {
@@ -1303,42 +1302,34 @@ export class StudioCore {
         ...(this.options.ollamaHost ? { ollamaHost: this.options.ollamaHost } : {}),
         onModelsChanged: () => this.emit(UiEvent.EnginesChanged, { engine: EngineId.LocalServer }),
       }),
-      new ClaudeCodeEngine({
-        onModelsChanged: () => this.emit(UiEvent.EnginesChanged, { engine: EngineId.ClaudeCode }),
-        engineHome: path.join(this.layout.engineHomes, EngineId.ClaudeCode),
-        protectedPaths: this.#protectedPaths(),
-        // Beside the engine's home, never in it: that can be the CLI's own config folder.
-        sessionCosts: path.join(this.layout.engineHomes, "session-costs", `${EngineId.ClaudeCode}.json`),
-        // The app is the one caller that owns the homes the boot sweep touches.
-        sweepOnBoot: true,
-        ...(this.options.claudeExecutable ? { executable: this.options.claudeExecutable } : {}),
-      }),
-      // The second subscription. Registered whether or not the CLI is on this Mac: an engine that
-      // is not installed says so in the picker, which is how the user learns it is an option.
-      new CodexEngine({
-        onModelsChanged: () => this.emit(UiEvent.EnginesChanged, { engine: EngineId.Codex }),
-        engineHome: path.join(this.layout.engineHomes, EngineId.Codex),
-        protectedPaths: this.#protectedPaths(),
-        ...(this.options.codexExecutable ? { executable: this.options.codexExecutable } : {}),
-      }),
-      // Metered: OpenCode on whatever the person signed it in to, OpenRouter on the key pasted in
-      // Settings. Registered like the subscriptions, so the picker can offer them.
-      new OpenCodeEngine({
-        scratchRoot: path.join(this.layout.scratch, EngineId.OpenCode),
-        protectedPaths: this.#protectedPaths(),
-        toolPath: async () => (await this.sandbox.toolPath()) ?? process.env.PATH ?? "",
-        lockRecovery: path.join(this.layout.engineHomes, LOCK_RECOVERY_DIR),
-        onModelsChanged: () => this.emit(UiEvent.EnginesChanged, { engine: EngineId.OpenCode }),
-      }),
-      new OpenRouterEngine({
-        root: path.join(this.layout.engineHomes, EngineId.OpenRouter),
-        scratchRoot: path.join(this.layout.scratch, EngineId.OpenRouter),
-        protectedPaths: this.#protectedPaths(),
-        toolPath: async () => (await this.sandbox.toolPath()) ?? process.env.PATH ?? "",
-        keys: secretKeyStore(path.join(this.layout.secrets, "providers"), OPENROUTER_KEY_SECRET),
-        onModelsChanged: () => this.emit(UiEvent.EnginesChanged, { engine: EngineId.OpenRouter }),
-      }),
+      // Local-only fork: the cloud engines (Claude Code, Codex, OpenCode, OpenRouter) are not
+      // registered. Their implementations stay in the tree (and smoke/acceptance can still name
+      // them through options.engines), so the app has no way to reach a subscription or a
+      // metered API: every run happens on the person's own hardware.
     ];
+  }
+
+  /**
+   * Local-only fork: connect the person's own model server without being asked. When no server
+   * is saved yet, probe the usual ports and keep the best that answers — LM Studio first, then
+   * the one listing the most models — so the studio opens ready to build on this machine's
+   * models. A server the person saved always wins, and a probe that finds nothing changes
+   * nothing: Settings keeps the manual connect. Never awaited at startup; a slow or absent
+   * server must not hold the app open.
+   */
+  async connectLocalServer(): Promise<void> {
+    if (!this.engines.has(EngineId.LocalServer)) return;
+    const engine = this.engines.get(EngineId.LocalServer) as LocalServerEngine;
+    const status = await engine.status().catch(() => null);
+    if (status?.code !== EngineStatusCode.NotInstalled) return;
+    const found = await engine.find().catch(() => []);
+    const usable = found.filter((server) => !server.needsKey && server.models > 0);
+    const pick =
+      usable.find((server) => server.kind === LocalServerKind.LmStudio) ??
+      usable.sort((a, b) => b.models - a.models)[0];
+    if (!pick) return;
+    const result = await engine.connect({ url: pick.url }).catch(() => null);
+    if (result?.ok) this.emit(UiEvent.EnginesChanged, { engine: EngineId.LocalServer });
   }
 
   #createHarnessHost(): HarnessHost {
@@ -1533,7 +1524,9 @@ export class StudioCore {
         .catch(() => ({ code: EngineStatusCode.Error }));
       if (status.code === EngineStatusCode.Ready) return id;
     }
-    return SUBSCRIPTION_ENGINES[0];
+    // Local-only fork: no subscription is registered, so name the first engine that exists
+    // rather than one the registry would refuse as unknown.
+    return this.engines.ids()[0] ?? SUBSCRIPTION_ENGINES[0];
   }
 
   /**

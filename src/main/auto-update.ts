@@ -33,7 +33,8 @@ export const AUTO_UPDATE_ENABLED = true;
  * The GitHub repository whose releases update.electronjs.org serves. `forge.config.cjs`
  * publishes to it and `package.json` names it (`auto-update.test.ts` holds the three together).
  */
-export const UPDATE_REPO = "genex-games/genex-desktop";
+/** This fork's own releases: updates come from the fork, never from upstream Genex. */
+export const UPDATE_REPO = "Franzferdinan51/genex-desktop";
 /** How often an installed copy asks for a newer release (the `ms` syntax the library parses). */
 const UPDATE_CHECK_INTERVAL = "1 hour";
 /** The platforms update.electronjs.org serves. */

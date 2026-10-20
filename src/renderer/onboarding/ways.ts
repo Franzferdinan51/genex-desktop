@@ -18,7 +18,12 @@ export const OtherWay = {
   OpenCode: "opencode",
 } as const;
 export type OtherWay = (typeof OtherWay)[keyof typeof OtherWay];
-export const OTHER_WAYS: readonly OtherWay[] = [OtherWay.Local, OtherWay.OpenRouter, OtherWay.OpenCode];
+/**
+ * The ways first launch offers. Local-only fork: local models are the only way — OpenRouter and
+ * OpenCode are metered services, and this fork never sends a build to one. Their screens stay in
+ * the tree, unreachable, beside the engines that are no longer registered.
+ */
+export const OTHER_WAYS: readonly OtherWay[] = [OtherWay.Local];
 
 /** How a way's button looks: its offer, something under way, or ready to build with. */
 export const WayState = { Idle: "idle", Busy: "busy", On: "on" } as const;

@@ -1043,6 +1043,91 @@ function Connect({
   );
 }
 
+/** The connect step: the subscriptions' screen, or — in this fork, which registers none — the local one. */
+function ConnectStep(props: {
+  engines: EngineDescriptor[];
+  onEnginesRefresh: () => void;
+  ways: Record<OtherWay, WayView>;
+  anyOn: boolean;
+  back: boolean;
+  onBack: () => void;
+  onWay: (way: OtherWay) => void;
+  onSkip: () => void;
+  onStart: () => void;
+  onTerminal: () => void;
+}): JSX.Element {
+  const hasSubscriptions = SUBSCRIPTIONS.some((id) => props.engines.some((engine) => engine.id === id));
+  if (!hasSubscriptions) {
+    return (
+      <ConnectLocal
+        ways={props.ways}
+        anyOn={props.anyOn}
+        back={props.back}
+        onBack={props.onBack}
+        onWay={props.onWay}
+        onSkip={props.onSkip}
+        onStart={props.onStart}
+      />
+    );
+  }
+  return (
+    <Connect
+      engines={props.engines}
+      onEnginesRefresh={props.onEnginesRefresh}
+      ways={props.ways}
+      anyOn={props.anyOn}
+      back={props.back}
+      onBack={props.onBack}
+      onWay={props.onWay}
+      onSkip={props.onSkip}
+      onStart={props.onStart}
+      onTerminal={props.onTerminal}
+    />
+  );
+}
+
+/**
+ * First launch in this fork: there is no subscription to bring. The connect step is the local
+ * one — the studio connects a local server it finds on its own (LM Studio first), and the ways
+ * row leads to managed local models or the server settings. Start lights up as soon as any
+ * local engine is ready to build with.
+ */
+function ConnectLocal({
+  ways,
+  anyOn,
+  back,
+  onBack,
+  onWay,
+  onSkip,
+  onStart,
+}: {
+  ways: Record<OtherWay, WayView>;
+  anyOn: boolean;
+  back: boolean;
+  onBack: () => void;
+  onWay: (way: OtherWay) => void;
+  onSkip: () => void;
+  onStart: () => void;
+}): JSX.Element {
+  const heading = useHeadingFocus();
+  return (
+    <section
+      className={`onboarding-screen onboarding-connect-screen ${back ? "onboarding-enter-back" : "onboarding-enter"}`}
+    >
+      <TopBar onBack={onBack} onSkip={anyOn ? undefined : onSkip} />
+      <h1 ref={heading} tabIndex={-1} className="onboarding-title">
+        Build with models on this Mac
+      </h1>
+      <p className="onboarding-lede">
+        This studio runs entirely on your own hardware: the local server it finds (LM Studio, llama.cpp or TabbyAPI),
+        managed local models, or your Ollama. Nothing you build leaves this machine.
+      </p>
+      <OtherWays views={ways} onOpen={onWay} />
+      <StartBuilding anyOn={anyOn} onStart={onStart} />
+    </section>
+  );
+}
+
 /** The model row's second line: its size and what it is good at, the download's progress, or that it is here. */
 function modelDetail(local: LocalModel, pick: ModelPick): string {
   if (local.installed) return "Downloaded · runs on this Mac";
@@ -1299,7 +1384,7 @@ export function Onboarding({
         );
       case Screen.Connect:
         return (
-          <Connect
+          <ConnectStep
             key={Screen.Connect}
             engines={engines}
             onEnginesRefresh={onEnginesRefresh}

@@ -7,7 +7,7 @@
   "description": "Self-improving AI game studio for macOS on Apple Silicon",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/genex-games/genex-desktop.git"
+    "url": "git+https://github.com/Franzferdinan51/genex-desktop.git"
   },
   "type": "module",
   "main": "dist/main/main.mjs",

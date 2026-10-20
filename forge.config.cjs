@@ -30,7 +30,7 @@ const { version } = require("./package.json");
 
 const PRODUCT_NAME = "Genex";
 const EXECUTABLE_NAME = "genex";
-const HOMEPAGE = "https://github.com/genex-games/genex-desktop";
+const HOMEPAGE = "https://github.com/Franzferdinan51/genex-desktop";
 const SUMMARY = "Self-improving AI game studio";
 /** The Linux desktop entry's generic name, beside the product name. */
 const GENERIC_NAME = "Game studio";
@@ -270,8 +270,8 @@ module.exports = {
     {
       name: "@electron-forge/publisher-github",
       config: {
-        // The public repository, as UPDATE_REPO in src/main/auto-update.ts names it.
-        repository: { owner: "genex-games", name: "genex-desktop" },
+        // This fork's repository, as UPDATE_REPO in src/main/auto-update.ts names it.
+        repository: { owner: "Franzferdinan51", name: "genex-desktop" },
         draft: true,
         // The tag is v<version>; a pre-release version (0.2.0-rc.1) makes a GitHub pre-release.
         prerelease: version.includes("-"),

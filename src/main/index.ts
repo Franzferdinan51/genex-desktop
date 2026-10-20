@@ -762,6 +762,10 @@ async function createCore(userData: string): Promise<StudioCore> {
   await studio.init();
   performanceRecorder.mark("core-ready");
   wirePlugins(studio);
+  // Local-only fork: a real launch connects the person's own model server (their LM Studio or
+  // another local server) on its own, so the studio opens ready to build locally. Fixture and
+  // smoke profiles stay offline by construction and never probe.
+  if (!fixtureNativePolicy) void studio.connectLocalServer().catch(() => {});
   return studio;
 }
 
@@ -769,11 +773,13 @@ async function createCore(userData: string): Promise<StudioCore> {
 function wirePlugins(studio: StudioCore): void {
   const pluginsRoot = path.join(studio.layout.engineHomes, "plugins");
   // Fixture profiles are offline by construction: the index is never fetched, so a test run can
-  // neither reach GitHub nor depend on what is published there.
+  // neither reach GitHub nor depend on what is published there. This fork is offline the same
+  // way for every profile: the published catalog lives on a hosted service, and a local-only
+  // studio installs plugins from local folders and repositories the person names instead.
   const market = new PluginMarketplace({
     root: pluginsRoot,
     studioVersion: app.getVersion(),
-    offline: fixtureNativePolicy,
+    offline: true,
   });
   marketplace = market;
   studio.plugins.reacquire = (info) => reacquirePlugin(studio, market, info, confirmInstall);
