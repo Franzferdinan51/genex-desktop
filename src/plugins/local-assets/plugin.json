@@ -1,0 +1,31 @@
+{
+  "apiVersion": 3,
+  "id": "local-assets",
+  "version": "0.1.0",
+  "name": "Local assets",
+  "publisher": "DuckBot",
+  "description": "Generate assets locally through services on this Mac — Qwen3-TTS voice (:8799) and ComfyUI image (:8188). No Genex account, no credits, nothing leaves the machine. Drama 3 is also on :8799 once a reference voice file is configured.",
+  "backend": "backend.mjs",
+  "capabilities": ["network"],
+  "network": { "hosts": ["127.0.0.1"] },
+  "tools": [
+    {
+      "name": "voice",
+      "description": "Generate a local voice line and save it to the project. Defaults to Qwen3-TTS (no reference needed). Switch model to drama-3 once a reference voice file is configured. Returns the saved file path.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string", "description": "What to say." },
+          "model": { "type": "string", "description": "TTS engine on :8799: qwen3-tts (default) or drama-3.", "default": "qwen3-tts" },
+          "voice": { "type": "string", "description": "Voice id, e.g. af_heart.", "default": "af_heart" },
+          "file": { "type": "string", "description": "Output file name inside the project, e.g. voice-01.mp3." }
+        },
+        "required": ["text", "file"]
+      }
+    }
+  ],
+  "skills": [],
+  "panels": [],
+  "settings": [],
+  "actions": []
+}
